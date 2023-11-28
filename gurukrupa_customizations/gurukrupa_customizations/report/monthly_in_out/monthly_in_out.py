@@ -130,7 +130,17 @@ def get_totals(data, employee):
 		"total_pay_hrs" : flt(net_pay_hrs['total_pay_hrs'].total_seconds() / conversion_factor, 2)
 	}
 
-	return [totals, total_days, refund, penalty_for_late_entry, net_pay_hrs, net_pay_days]
+	net_pay_hrs_wo_ot = {
+		"ot_hours": "Net Hrs w/o OT",
+		"total_pay_hrs" : totals["total_pay_hrs"] + refund["total_pay_hrs"] - penalty_hrs - totals["ot_hours"]
+	}
+
+	net_pay_days_wo_ot = {
+		"ot_hours": "Net Days w/o OT",
+		"total_pay_hrs" : flt(net_pay_hrs_wo_ot['total_pay_hrs'].total_seconds() / conversion_factor, 2)
+	}
+
+	return [totals, total_days, refund, penalty_for_late_entry, net_pay_hrs, net_pay_days, net_pay_hrs_wo_ot, net_pay_days_wo_ot]
 
 def process_data(data, filters):
 	employee = filters.get("employee")
@@ -140,7 +150,7 @@ def process_data(data, filters):
 	result = []
 	holidays = []
 	wo = []
-	emp_det = frappe.db.get_value("Employee", employee, ["default_shift","holiday_list"], as_dict=1)
+	emp_det = frappe.db.get_value("Employee", employee, ["default_shift","holiday_list","date_of_joining"], as_dict=1)
 	shift = emp_det.get("default_shift")
 	shift_det = frappe.db.get_value("Shift Type", shift, ['shift_hours','holiday_list','start_time', 'end_time'], as_dict=1)
 	shift_hours = flt(shift_det.get("shift_hours"))
@@ -177,14 +187,14 @@ def process_data(data, filters):
 			row["status"] = "OD"
 			if ot_hours:=row.get("ot_hours"):
 				row['total_pay_hrs'] = ot_hours
-		elif date in wo:
+		elif date in wo and (date >= getdate(emp_det.get("date_of_joining"))):
 			status = "WO"
 			if first_in_last_out := get_checkins(employee,date):		
 				row["in_time"] = get_time(first_in_last_out[0].get("time"))
 				row["out_time"] = get_time(first_in_last_out[-1].get("time"))
 			if ot_hours:=row.get("ot_hours"):
 				row['total_pay_hrs'] = ot_hours
-		elif date in holidays:
+		elif (date in holidays) and (date >= getdate(emp_det.get("date_of_joining"))):
 			status = "H"
 			row['net_wrk_hrs'] = timedelta(hours=shift_hours)
 			row['total_pay_hrs'] = timedelta(hours=shift_hours)
