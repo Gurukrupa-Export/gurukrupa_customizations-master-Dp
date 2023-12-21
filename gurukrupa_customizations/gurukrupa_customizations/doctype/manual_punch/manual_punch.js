@@ -87,7 +87,7 @@ function add_punch(frm,time) {
 	var checkins = frm.doc.details || []
 	checkins.push(new_punch)
 	checkins.sort((a,b)=>{
-		return frappe.datetime.get_hour_diff(a.time, b.time)
+		return moment(a.time).diff(b.time, 'second')
 	})
 	frm.doc.details = []
 	$.each(checkins || [], function(i,d) {

@@ -28,17 +28,17 @@ class PersonalOutGatePass(Document):
 								time(timediff(MIN(check_in.time),check_out.checkout)) as total_hours,
 								pol.name as po_log, if(pol.name is null, 1, pol.approve) as approve, pol.total_hours as approved_hours
 								FROM (
-								SELECT employee, employee_name, DATE(time) AS at_date, SUM(IF(log_type = 'OUT', 1, 0)) AS cnt
+								SELECT employee, employee_name, DATE(time) AS at_date, SUM(IF(log_type = 'OUT', 1, 0)) AS cnt, shift_start
 								FROM `tabEmployee Checkin`
 								WHERE log_type = 'OUT'
-								GROUP BY employee, at_date
+								GROUP BY employee, shift_start
 								HAVING cnt > 1
 								) emp_det
 								LEFT JOIN (
-								SELECT time AS checkout, employee AS emp, DATE(time) AS co_date
+								SELECT time AS checkout, employee AS emp, DATE(time) AS co_date, shift_start
 								FROM `tabEmployee Checkin`
 								WHERE log_type = 'OUT'
-								) check_out ON emp_det.employee = check_out.emp AND emp_det.at_date = check_out.co_date
+								) check_out ON emp_det.employee = check_out.emp AND emp_det.at_date = check_out.co_date and emp_det.shift_start = check_out.shift_start
 								LEFT JOIN (
 								SELECT time, employee, DATE(time) AS ci_date
 								FROM `tabEmployee Checkin`

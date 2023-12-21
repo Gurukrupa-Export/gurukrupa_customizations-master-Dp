@@ -3,9 +3,10 @@
 
 import frappe
 from frappe.model.document import Document
-from frappe.utils import getdate, add_to_date, get_datetime, get_datetime_str, time_diff, getdate, get_timedelta
+from frappe.utils import getdate, add_to_date, get_datetime, get_datetime_str, time_diff, getdate, get_timedelta, get_time
 from frappe import _
 from hrms.hr.doctype.shift_assignment.shift_assignment import get_employee_shift_timings
+from datetime import timedelta, datetime
 
 
 class OTAllowance(Document):
@@ -53,6 +54,8 @@ class OTAllowance(Document):
 		for row in data:
 			if not row.get("allowed_ot"):
 				row["allowed_ot"] = row.get("attn_ot_hrs")
+			if row.get("allowed_ot") <= timedelta(minutes=30):	# for excluding OT that are less than 30 min
+				continue 
 			self.append("ot_details", row)
 
 	def get_weekoffs_ot(self, from_log=False):
@@ -61,7 +64,7 @@ class OTAllowance(Document):
 		
 		for holiday_list, emp_list in holidays.items():
 			holidays_list = frappe.get_all("Holiday", {"parent": holiday_list,
-					"holiday_date":["between",[self.from_date, self.to_date]]}, ["holiday_date","weekly_off"])
+					"holiday_date":["between",[self.from_date, self.to_date]], "weekly_off": 1}, ["holiday_date","weekly_off"])
 			for emp in emp_list:
 				res += self.get_weekoffs_ot_per_employee(from_log, emp, holidays_list)
 		return res
@@ -69,9 +72,11 @@ class OTAllowance(Document):
 	def get_weekoffs_ot_per_employee(self, from_log=False, emp = None, holidays = []):
 		res = []
 		for holiday in holidays:
-			shift_timings = get_employee_shift_timings(emp.name, get_datetime(holiday.holiday_date), True)[1]
+			shift = get_shift(emp.name, holiday.holiday_date, emp.default_shift)
+			date_time = datetime.combine(getdate(holiday.holiday_date), get_time(shift.start_time))
+			shift_timings = get_employee_shift_timings(emp.name, get_datetime(date_time), True)[1]
 			filters = {
-					"time":["between",[get_datetime_str(shift_timings.actual_start), add_to_date(shift_timings.actual_end, days=-1)]],
+					"time":["between",[get_datetime_str(shift_timings.actual_start), get_datetime_str(shift_timings.actual_end)]],
 					"employee": emp.name
 			}
 			fields = ["date(time) as date", "log_type as type", "time(time) as time", "time as date_time", "source", "name as employee_checkin", f"date('{holiday.holiday_date}') as holiday", "employee", "employee_name"]
@@ -180,3 +185,11 @@ def create_ot_log(ref_doc):
 	doc.update(data)
 	doc.save()
 	return doc.name
+
+
+def get_shift(employee, date, default_shift):
+	shift = frappe.db.get_value("Shift Assignment", {"employee": employee, "start_date": ["<=", date], "end_date": [">=",date], "status": "Active", "docstatus": 1})
+	if not shift:
+		shift = default_shift
+	det = frappe.db.get_value("Shift Type", shift, ["name", "start_time", "end_time", "shift_hours", "begin_check_in_before_shift_start_time", "allow_check_out_after_shift_end_time"], as_dict=1)
+	return det

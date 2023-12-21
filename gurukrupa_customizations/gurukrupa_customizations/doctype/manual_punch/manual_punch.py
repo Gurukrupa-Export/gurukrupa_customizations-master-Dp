@@ -4,7 +4,8 @@
 import frappe
 from frappe.model.document import Document
 from frappe import _
-from frappe.utils import cint, add_to_date, get_datetime, get_datetime_str
+from frappe.utils import cint, add_to_date, get_datetime, get_datetime_str, getdate, get_time
+from datetime import datetime
 import itertools
 from hrms.hr.doctype.employee_checkin.employee_checkin import mark_attendance_and_link_log
 from gurukrupa_customizations.gurukrupa_customizations.doctype.personal_out_gate_pass.personal_out_gate_pass import create_prsnl_out_logs
@@ -28,7 +29,8 @@ class ManualPunch(Document):
 
 	@frappe.whitelist()
 	def validate_punch(self):
-		shift_det = get_employee_shift_timings(self.employee, get_datetime(self.date), True)[1]
+		shift_datetime = datetime.combine(getdate(self.date), get_time(self.start_time))
+		shift_det = get_employee_shift_timings(self.employee, shift_datetime, True)[1]
 		if not (get_datetime(self.new_punch) > shift_det.actual_start and get_datetime(self.new_punch) < shift_det.actual_end):
 			frappe.throw(_(f"Punch must be in between {shift_det.actual_start} and {shift_det.actual_end}"))
 
@@ -54,7 +56,8 @@ class ManualPunch(Document):
 	def search_checkin(self):
 		self.validate_filters()
 		self.details = []
-		return get_checkins(self.employee, self.date)
+		shift_datetime = datetime.combine(getdate(self.date), get_time(self.start_time))
+		return get_checkins(self.employee, shift_datetime)
 
 	def delete_checkin(self):
 		if self.to_be_deleted:
@@ -146,15 +149,15 @@ def cancel_linked_records(employee, date):
 		frappe.db.sql(f"""update `tabPersonal Out Log` set is_cancelled = 1 where name in ('{"', '".join(po)}')""")
 	return {"ot":ot, "po": po}
 
-def get_checkins(employee, date):
-	if not (employee and date):
+def get_checkins(employee, shift_datetime):
+	if not (employee and shift_datetime):
 		return []
-	shift_timings = get_employee_shift_timings(employee, get_datetime(date), True)[1] 	#for current shift
+	shift_timings = get_employee_shift_timings(employee, get_datetime(shift_datetime), True)[1] 	#for current shift
 	or_filter = {
-			"time":["between",[get_datetime_str(shift_timings.actual_start), add_to_date(shift_timings.actual_end, days=-1)]]
+			"time":["between",[get_datetime_str(shift_timings.actual_start), get_datetime_str(shift_timings.actual_end)]]
 	}
 	fields = ["date(time) as date", "log_type as type", "time", "source", "name as employee_checkin"]
-	attendance = frappe.db.get_value("Attendance", {"employee": employee, "attendance_date": date, "docstatus":1})
+	attendance = frappe.db.get_value("Attendance", {"employee": employee, "attendance_date": getdate(shift_datetime), "docstatus":1})
 	if attendance:
 		or_filter["attendance"] = attendance
 	data = frappe.get_list("Employee Checkin", filters= {"employee": employee}, or_filters = or_filter, fields=fields, order_by='time')

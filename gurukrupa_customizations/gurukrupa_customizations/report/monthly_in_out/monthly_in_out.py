@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from datetime import timedelta
+from datetime import timedelta, datetime
 from frappe.utils import flt, getdate, add_days, format_time, today, add_to_date, get_time
 from gurukrupa_customizations.gurukrupa_customizations.doctype.manual_punch.manual_punch import get_checkins
 
@@ -41,8 +41,9 @@ def get_data(filters=None):
 							time_to_sec(timediff(st.start_time, time(at.in_time))), 0)
 					- if(at.out_time > timestamp(date(at.in_time),st.end_time),
 							time_to_sec(timediff(at.out_time, timestamp(date(at.in_time),st.end_time))), 0)
+					- ifnull(time_to_sec(pol.hrs),0)
 					+ (select ifnull(sum(time_to_sec(pl.total_hours)),0) from `tabPersonal Out Log` pl 
-							where pl.is_cancelled = 0 and pl.employee = at.employee and pl.date = at.attendance_date and pl.out_time >= st.end_time)
+						where pl.is_cancelled = 0 and pl.employee = at.employee and pl.date = at.attendance_date and pl.out_time >= st.end_time)
 				) as net_wrk_hrs,
 			st.shift_hours, 
 			if(st.working_hours_threshold_for_half_day>at.working_hours and at.working_hours > 0,1,0) as lh,
@@ -130,7 +131,17 @@ def get_totals(data, employee):
 		"total_pay_hrs" : flt(net_pay_hrs['total_pay_hrs'].total_seconds() / conversion_factor, 2)
 	}
 
-	return [totals, total_days, refund, penalty_for_late_entry, net_pay_hrs, net_pay_days]
+	net_pay_hrs_wo_ot = {
+		"ot_hours": "Net Hrs w/o OT",
+		"total_pay_hrs" : totals["total_pay_hrs"] + refund["total_pay_hrs"] - penalty_hrs - totals["ot_hours"]
+	}
+
+	net_pay_days_wo_ot = {
+		"ot_hours": "Net Days w/o OT",
+		"total_pay_hrs" : flt(net_pay_hrs_wo_ot['total_pay_hrs'].total_seconds() / conversion_factor, 2)
+	}
+
+	return [totals, total_days, refund, penalty_for_late_entry, net_pay_hrs, net_pay_days, net_pay_hrs_wo_ot, net_pay_days_wo_ot]
 
 def process_data(data, filters):
 	employee = filters.get("employee")
@@ -140,7 +151,7 @@ def process_data(data, filters):
 	result = []
 	holidays = []
 	wo = []
-	emp_det = frappe.db.get_value("Employee", employee, ["default_shift","holiday_list"], as_dict=1)
+	emp_det = frappe.db.get_value("Employee", employee, ["default_shift","holiday_list","date_of_joining"], as_dict=1)
 	shift = emp_det.get("default_shift")
 	shift_det = frappe.db.get_value("Shift Type", shift, ['shift_hours','holiday_list','start_time', 'end_time'], as_dict=1)
 	shift_hours = flt(shift_det.get("shift_hours"))
@@ -177,14 +188,15 @@ def process_data(data, filters):
 			row["status"] = "OD"
 			if ot_hours:=row.get("ot_hours"):
 				row['total_pay_hrs'] = ot_hours
-		elif date in wo:
+		elif date in wo and (date >= getdate(emp_det.get("date_of_joining"))):
 			status = "WO"
-			if first_in_last_out := get_checkins(employee,date):		
+			date_time = datetime.combine(getdate(date), get_time(shift_det.start_time))
+			if first_in_last_out := get_checkins(employee,date_time):		
 				row["in_time"] = get_time(first_in_last_out[0].get("time"))
 				row["out_time"] = get_time(first_in_last_out[-1].get("time"))
 			if ot_hours:=row.get("ot_hours"):
 				row['total_pay_hrs'] = ot_hours
-		elif date in holidays:
+		elif (date in holidays) and (date >= getdate(emp_det.get("date_of_joining"))):
 			status = "H"
 			row['net_wrk_hrs'] = timedelta(hours=shift_hours)
 			row['total_pay_hrs'] = timedelta(hours=shift_hours)

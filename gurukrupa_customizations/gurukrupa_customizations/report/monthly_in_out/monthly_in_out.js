@@ -206,6 +206,11 @@ frappe.query_reports["Monthly In-Out"] = {
 				value = $value.wrap("<p></p>").parent().html();
 			}
 		}
+		if (in_list(["ot_hours", "total_pay_hrs"], column.id) && in_list(["Net Hrs w/o OT", "Net Days w/o OT"],data.ot_hours)) {
+			value = $(`<span>${value}</span>`);
+			var $value = $(value).css("color", "blue");
+			value = $value.wrap("<p></p>").parent().html();
+		}
 		if (column.id == "late_entry" && data.attendance_date) {
 			if (data.late_entry){
 				value = $(`<input type="checkbox" disabled="" class="disabled-selected">`);
