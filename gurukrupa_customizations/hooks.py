@@ -38,7 +38,7 @@ scheduler_events = {
 fixtures = [
 	{
 		"dt": "Custom Field", 
-		"filters": [["dt", "in", ["Employee", "Company", "Employee Referral", "Job Requisition", "Salary Slip", "Shift Type", "Attendance"]], ["is_system_generated",'=',0]]
+		"filters": [["dt", "in", ["Employee", "Company", "Employee Referral", "Job Requisition", "Salary Slip", "Shift Type", "Attendance", "Item"]], ["is_system_generated",'=',0]]
 	},
     {
 		"dt": "Property Setter", 
